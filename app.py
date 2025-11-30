@@ -1,4 +1,3 @@
-# app.py
 import duckdb
 import pandas as pd
 import solara
@@ -34,7 +33,6 @@ min_population = solara.reactive(0)
 # -----------------------------
 @solara.component
 def Page():
-
     with solara.Column(gap="20px"):
         solara.Markdown("# 🌍 國家城市數據儀表板")
 
@@ -87,3 +85,9 @@ def Page():
             )
             html_pie = pio.to_html(fig_pie, include_plotlyjs='cdn')
             solara.HTML(html_pie, style={"width": "50%", "height": "400px"})
+
+# -----------------------------
+# 啟動 Solara App
+# -----------------------------
+if __name__ == "__main__":
+    solara.App(Page)
