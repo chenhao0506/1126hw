@@ -1,12 +1,10 @@
+# app.py
 import duckdb
 import pandas as pd
 import solara
 import plotly.express as px
 import plotly.io as pio
 
-# -----------------------------
-# 1. 讀取資料
-# -----------------------------
 url = "https://data.gishub.org/duckdb/cities.csv"
 
 con = duckdb.connect()
@@ -19,31 +17,21 @@ df = con.sql(f"""
     WHERE population IS NOT NULL
 """).df()
 
-# 取得國家列表
 country_list = sorted(df["country"].unique())
-
-# -----------------------------
-# 2. Solara Reactive 狀態
-# -----------------------------
 selected_country = solara.reactive(country_list[0])
 min_population = solara.reactive(0)
 
-# -----------------------------
-# 3. Solara App 主頁
-# -----------------------------
 @solara.component
 def Page():
     with solara.Column(gap="20px"):
         solara.Markdown("# 🌍 國家城市數據儀表板")
 
-        # 選國家
         solara.Select(
             label="請選擇國家",
             values=country_list,
             value=selected_country
         )
 
-        # 滑動尺標篩人口
         solara.SliderInt(
             "人口最少",
             min=0,
@@ -51,21 +39,16 @@ def Page():
             value=min_population
         )
 
-    # 篩選資料
     filtered_data = df[
         (df["country"] == selected_country.value) &
         (df["population"] >= min_population.value)
     ].reset_index(drop=True)
 
-    # --- 顯示表格 ---
     solara.Markdown(f"### 📋 數據表格 (共 {len(filtered_data)} 個城市)")
     solara.DataFrame(filtered_data)
 
-    # --- 顯示左右圖 ---
     if not filtered_data.empty:
         with solara.Row():
-
-            # 左邊：人口直方圖
             fig_hist = px.histogram(
                 filtered_data,
                 x="population",
@@ -73,21 +56,15 @@ def Page():
                 title=f"{selected_country.value} 城市人口分布",
                 labels={"population": "人口數"}
             )
-            html_hist = pio.to_html(fig_hist, include_plotlyjs='cdn')
-            solara.HTML(html_hist, style={"width": "50%", "height": "400px"})
+            solara.HTML(pio.to_html(fig_hist, include_plotlyjs='cdn'), style={"width":"50%","height":"400px"})
 
-            # 右邊：人口比例圓餅圖
             fig_pie = px.pie(
                 filtered_data,
                 names="name",
                 values="population",
                 title=f"{selected_country.value} 各城市人口比例"
             )
-            html_pie = pio.to_html(fig_pie, include_plotlyjs='cdn')
-            solara.HTML(html_pie, style={"width": "50%", "height": "400px"})
+            solara.HTML(pio.to_html(fig_pie, include_plotlyjs='cdn'), style={"width":"50%","height":"400px"})
 
-# -----------------------------
-# 啟動 Solara App
-# -----------------------------
-if __name__ == "__main__":
-    solara.App(Page)
+# ✅ 直接呼叫 Page() 啟動
+Page()
