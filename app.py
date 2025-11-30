@@ -31,35 +31,32 @@ min_population = solara.reactive(0)
 # 3. 地圖函式
 # -----------------------------
 def create_country_map(country, population_min):
-    # 選擇該國家資料
     filtered = df[(df["country"] == country) & (df["population"] >= population_min)]
 
-    # 若沒有資料，預設中心為全球
     if filtered.empty:
         center = [20, 0]
         zoom = 2
     else:
-        # 中心設在該國家所有城市平均經緯度
         center = [filtered["latitude"].mean(), filtered["longitude"].mean()]
         zoom = 4
 
     m = leafmap.Map(center=center, zoom=zoom, height="600px")
     m.add_basemap("Esri.WorldImagery")
 
-    # 將城市加入地圖
+    # 建立 marker list
     markers = []
     for _, row in filtered.iterrows():
-        marker = {
+        markers.append({
             "coordinates": [row["longitude"], row["latitude"]],
             "popup": f"<b>{row['name']}</b><br>人口：{int(row['population']):,}",
             "color": "red"
-        }
-        markers.append(marker)
+        })
 
+    # ✅ 批量加入
     if markers:
-        m.add_marker(markers)
+        m.add_markers(markers)  # 注意 add_markers() 才能接受 list
 
-    return m, filtered  # 回傳篩選後資料，用於表格顯示
+    return m, filtered
 
 # -----------------------------
 # 4. Solara App 主頁
