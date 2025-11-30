@@ -1,6 +1,7 @@
 import duckdb
 import pandas as pd
 import solara
+import plotly.express as px
 
 # -----------------------------
 # 1. 讀取資料
@@ -33,7 +34,7 @@ min_population = solara.reactive(0)
 def Page():
 
     with solara.Column(gap="20px"):
-        solara.Markdown("# 📊 城市資料表格")
+        solara.Markdown("# 📊 國家城市數據儀表板")
 
         # 選國家
         solara.Select(
@@ -59,3 +60,29 @@ def Page():
     # 顯示表格
     solara.Markdown(f"### 📋 數據表格 (共 {len(filtered_data)} 個城市)")
     solara.DataFrame(filtered_data)
+
+    # -----------------------------
+    # 4. 直方圖 + 圓餅圖
+    # -----------------------------
+    if not filtered_data.empty:
+        with solara.Row():
+            # 左邊：人口直方圖
+            fig_hist = px.histogram(
+                filtered_data,
+                x="population",
+                nbins=20,
+                title=f"{selected_country.value} 城市人口分布",
+                labels={"population": "人口數"}
+            )
+            fig_hist.update_layout(margin=dict(l=20, r=20, t=40, b=20))
+            solara.Plotly(fig_hist, height=400, width=500)
+
+            # 右邊：人口比例圓餅圖
+            fig_pie = px.pie(
+                filtered_data,
+                names="name",
+                values="population",
+                title=f"{selected_country.value} 各城市人口比例"
+            )
+            fig_pie.update_layout(margin=dict(l=20, r=20, t=40, b=20))
+            solara.Plotly(fig_pie, height=400, width=500)
