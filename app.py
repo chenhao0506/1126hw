@@ -37,12 +37,13 @@ min_population = solara.reactive(0)
 # 3. 做地圖（預設 Esri.WorldImagery）
 # -----------------------------
 def create_map(city, population_min):
-    # ⭐ 不載入 OSM，直接指定預設底圖（你的要求）
     m = leafmap.Map(
         center=[20, 0],
-        zoom=2,
-        basemap="Esri.WorldImagery"
+        zoom=2
     )
+
+    # ⭐ 你想要的預設底圖（唯一方式就是 add_basemap）
+    m.add_basemap("Esri.WorldImagery")
 
     filtered = df[df["population"] >= population_min]
 
