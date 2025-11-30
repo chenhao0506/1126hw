@@ -116,29 +116,31 @@ def Page():
         CityMap(df)
         solara.Markdown(f"### 📋 數據表格")
         solara.DataFrame(df)
-        # 顯示直方圖 & 圓餅圖
-        with solara.Row():
-            # 左：直方圖
-            fig_hist = px.bar(
-                df,
-                x="name",
-                y="population",
-                color="population",
-                title=f"{selected_country.value} 城市人口分布",
-                labels={"name":"城市名稱","population":"人口數"},
-                height=400
-            )
-            fig_hist.update_layout(xaxis_tickangle=-45)
-            solara.FigurePlotly(fig_hist, style={"width":"50%"})
-            # 右：圓餅圖
-            fig_pie = px.pie(
-                df,
-                names="name",
-                values="population",
-                title=f"{selected_country.value} 各城市人口比例",
-                height=400
-            )
-            solara.FigurePlotly(fig_pie, style={"width":"50%"})
+        
+        solara.Markdown(f"### 📊 {selected_country.value} 人口分布 (Plotly)")
+        # 直方圖（上方）
+        fig_hist = px.bar(
+            df,
+            x="name",
+            y="population",
+            color="population",
+            title=f"{selected_country.value} 城市人口分布",
+            labels={"name":"城市名稱","population":"人口數"},
+            height=400
+        )
+        fig_hist.update_layout(xaxis_tickangle=-45)
+        solara.FigurePlotly(fig_hist)
+        
+        # 圓餅圖（下方）
+        fig_pie = px.pie(
+            df,
+            names="name",
+            values="population",
+            title=f"{selected_country.value} 各城市人口比例",
+            height=400
+        )
+        solara.FigurePlotly(fig_pie)
+
     else:
         solara.Info("正在載入資料...")
 
