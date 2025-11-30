@@ -3,13 +3,13 @@ import pandas as pd
 import solara
 import leafmap.maplibregl as leafmap
 
-
 # -----------------------------
-# 1. 直接從網路讀取資料（避免 PermissionError）
+# 1. 資料處理
 # -----------------------------
 url = "https://data.gishub.org/duckdb/cities.csv"
 
-con = duckdb.connect()  # in-memory DB
+# 建立連線並讀取資料
+con = duckdb.connect()
 con.install_extension("spatial")
 con.load_extension("spatial")
 
@@ -21,85 +21,75 @@ df = con.sql(f"""
         longitude,
         population
     FROM '{url}'
+    WHERE population IS NOT NULL
 """).df()
 
+# 為了選單排序，取得城市列表
 city_list = sorted(df["name"].unique())
 
-
 # -----------------------------
-# 2. Solara reactive 狀態
+# 2. Solara Reactive 狀態
 # -----------------------------
+# 預設選取第一個城市
 selected_city = solara.reactive(city_list[0])
-min_population = solara.reactive(0)
-
 
 # -----------------------------
-# 3. 建立地圖（使用正確的 maplibregl API）
-# -----------------------------
-def create_map(city, population_min):
-
-    # ❗ MapLibre 不支援 basemap=，只能先建立 Map 再 add_basemap
-    m = leafmap.Map(
-        center=[20, 0],
-        zoom=2
-    )
-    m.add_basemap("Esri.WorldImagery")  # ⭐ 預設底圖
-
-    filtered = df[df["population"] >= population_min]
-
-    for _, row in filtered.iterrows():
-        lng = float(row["longitude"])
-        lat = float(row["latitude"])
-
-        # 選到的城市顯示另一種顏色
-        if row["name"] == city:
-            marker_color = "red"
-        else:
-            marker_color = "blue"
-
-        # ⭐ 正確寫法：add_marker(lng, lat, ...)
-        m.add_marker(
-            lng,
-            lat,
-            popup=f"{row['name']}<br>人口：{row['population']:,}",
-            options={"color": marker_color}
-        )
-
-    return m
-
-
-# -----------------------------
-# 4. Solara App 主頁
+# 3. Solara App 主頁
 # -----------------------------
 @solara.component
 def Page():
-
-    solara.Markdown("# 🌍 城市互動地圖（Esri 衛星圖 + DuckDB）")
-
-    # 側邊欄
-    with solara.Sidebar():
-        solara.Markdown("### 設定選項")
-
+    
+    # --- 版面區塊 1：標題與選單 (置頂) ---
+    with solara.Column(gap="20px"):
+        solara.Markdown("# 🌍 城市互動地圖 (Esri 衛星圖)")
+        
+        # 將選單放在最上方，不使用 Sidebar
         solara.Select(
-            label="選擇城市",
+            label="請選擇城市：",
             values=city_list,
             value=selected_city
         )
 
-        solara.SliderInt(
-            "人口最少",
-            min=0,
-            max=50_000_000,
-            value=min_population
-        )
+    # --- 資料計算 ---
+    # 根據選單找出該城市的資料
+    city_data = df[df["name"] == selected_city.value].iloc[0]
+    
+    lat = float(city_data['latitude'])
+    lng = float(city_data['longitude'])
+    pop = city_data['population']
+    name = city_data['name']
 
-    # 顯示選定城市資訊
-    city_info = df[df["name"] == selected_city.value].iloc[0]
+    # --- 版面區塊 2：城市資訊 ---
+    # 使用 Card 讓資訊看起來更整潔
+    with solara.Card(name):
+        solara.Markdown(f"""
+        - **國家**：{city_data['country']}
+        - **人口**：{int(pop):,}
+        - **座標**：{lat:.4f}, {lng:.4f}
+        """)
 
-    solara.Markdown(f"""
-    ## {city_info['name']}
-    - 國家：{city_info['country']}
-    - 人口：{city_info['population']:,}
-    - 經度：{city_info['longitude']}
-    - 緯度：{city_info['latitude']}
-    """)
+    # --- 版面區塊 3：地圖 (關鍵修復部分) ---
+    # 這裡直接建立地圖，每次 city 改變時，因為是 reactive，這裡會重新渲染
+    
+    # 1. 初始化地圖，中心點設為選中城市，Zoom 放大一點以便觀察
+    m = leafmap.Map(
+        center=[lat, lng],
+        zoom=10,
+        style="streets", # maplibregl 預設樣式
+        height="600px"   # ❗重要：設定高度，否則有時會顯示不出來
+    )
+    
+    # 2. 加入 Esri 衛星底圖
+    m.add_basemap("Esri.WorldImagery")
+
+    # 3. 加入該城市的標記 (只加這一個，效能最好)
+    m.add_marker(
+        lng, 
+        lat, 
+        popup=f"{name}<br>人口：{int(pop):,}",
+        options={"color": "red"}
+    )
+
+    # 4. ❗最重要的一步：將地圖顯示出來
+    # 在 Solara 中，maplibregl 的物件可以直接被渲染
+    m.element()
