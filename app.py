@@ -8,9 +8,8 @@ import leafmap.maplibregl as leafmap
 # 1. 載入資料
 # -----------------------------
 url = "https://data.gishub.org/duckdb/cities.csv"
-leafmap.download_file(url, unzip=True)
 
-con = duckdb.connect("nyc_data.db")
+con = duckdb.connect()
 con.install_extension("spatial")
 con.load_extension("spatial")
 
