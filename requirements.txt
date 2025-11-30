@@ -1,4 +1,6 @@
+solara
 duckdb
 pandas
-solara
 plotly
+leafmap
+ipyleaflet

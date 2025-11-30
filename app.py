@@ -1,70 +1,148 @@
 # app.py
+import solara
 import duckdb
 import pandas as pd
-import solara
 import plotly.express as px
-import plotly.io as pio
+import leafmap.maplibregl as leafmap
 
-url = "https://data.gishub.org/duckdb/cities.csv"
+# -----------------------------
+# 1. 資料來源 & 狀態管理
+# -----------------------------
+CITIES_CSV_URL = 'https://data.gishub.org/duckdb/cities.csv'
 
-con = duckdb.connect()
-con.install_extension("spatial")
-con.load_extension("spatial")
+all_countries = solara.reactive([])
+selected_country = solara.reactive("")
+data_df = solara.reactive(pd.DataFrame())
 
-df = con.sql(f"""
-    SELECT name, country, latitude, longitude, population
-    FROM '{url}'
-    WHERE population IS NOT NULL
-""").df()
+# -----------------------------
+# 2. 資料載入函數
+# -----------------------------
 
-country_list = sorted(df["country"].unique())
-selected_country = solara.reactive(country_list[0])
-min_population = solara.reactive(0)
+def load_country_list():
+    """初始化：載入國家清單"""
+    try:
+        con = duckdb.connect()
+        con.install_extension("httpfs")
+        con.load_extension("httpfs")
+        result = con.sql(f"""
+            SELECT DISTINCT country
+            FROM '{CITIES_CSV_URL}'
+            ORDER BY country
+        """).fetchall()
+        country_list = [row[0] for row in result]
+        all_countries.set(country_list)
+        if "USA" in country_list:
+            selected_country.set("USA")
+        elif country_list:
+            selected_country.set(country_list[0])
+        con.close()
+    except Exception as e:
+        print(f"Error loading countries: {e}")
 
+def load_filtered_data():
+    """根據選中國家載入城市資料"""
+    country_name = selected_country.value
+    if not country_name:
+        return
+    try:
+        con = duckdb.connect()
+        con.install_extension("httpfs")
+        con.load_extension("httpfs")
+        df_result = con.sql(f"""
+            SELECT name, country, population, latitude, longitude
+            FROM '{CITIES_CSV_URL}'
+            WHERE country = '{country_name}'
+            ORDER BY population DESC
+            LIMIT 10
+        """).df()
+        data_df.set(df_result)
+        con.close()
+    except Exception as e:
+        print(f"Error executing query: {e}")
+        data_df.set(pd.DataFrame())
+
+# -----------------------------
+# 3. Leafmap 地圖 component
+# -----------------------------
+@solara.component
+def CityMap(df: pd.DataFrame):
+    """顯示城市地圖"""
+    if df.empty:
+        return solara.Info("沒有城市數據可顯示")
+    center = [df['latitude'].iloc[0], df['longitude'].iloc[0]]
+    m = leafmap.Map(
+        center=center,
+        zoom=4,
+        add_sidebar=True,
+        height="600px"
+    )
+    m.add_basemap("Esri.WorldImagery", before_id=m.first_symbol_layer_id)
+    
+    # 轉成 GeoJSON
+    features = []
+    for _, row in df.iterrows():
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [row["longitude"], row["latitude"]]},
+            "properties": {
+                "name": row["name"],
+                "population": int(row["population"]) if row["population"] else None
+            }
+        })
+    geojson = {"type": "FeatureCollection", "features": features}
+    m.add_geojson(geojson)
+    return m.to_solara()
+
+# -----------------------------
+# 4. 主頁面 Page
+# -----------------------------
 @solara.component
 def Page():
-    with solara.Column(gap="20px"):
-        solara.Markdown("# 🌍 國家城市數據儀表板")
+    solara.Title("城市地理人口分析 (DuckDB + Solara + Leafmap)")
+    
+    solara.use_effect(load_country_list, dependencies=[])
+    solara.use_effect(load_filtered_data, dependencies=[selected_country.value])
 
+    with solara.Card(title="城市篩選器"):
         solara.Select(
-            label="請選擇國家",
-            values=country_list,
-            value=selected_country
+            label="選擇國家",
+            value=selected_country,
+            values=all_countries.value
         )
 
-        solara.SliderInt(
-            "人口最少",
-            min=0,
-            max=50_000_000,
-            value=min_population
-        )
-
-    filtered_data = df[
-        (df["country"] == selected_country.value) &
-        (df["population"] >= min_population.value)
-    ].reset_index(drop=True)
-
-    solara.Markdown(f"### 📋 數據表格 (共 {len(filtered_data)} 個城市)")
-    solara.DataFrame(filtered_data)
-
-    if not filtered_data.empty:
+    if selected_country.value and not data_df.value.empty:
+        df = data_df.value
+        solara.Markdown(f"## {selected_country.value} 前 {len(df)} 大城市")
+        CityMap(df)
+        solara.Markdown(f"### 📋 數據表格")
+        solara.DataFrame(df)
+        # 顯示直方圖 & 圓餅圖
         with solara.Row():
-            fig_hist = px.histogram(
-                filtered_data,
-                x="population",
-                nbins=20,
+            # 左：直方圖
+            fig_hist = px.bar(
+                df,
+                x="name",
+                y="population",
+                color="population",
                 title=f"{selected_country.value} 城市人口分布",
-                labels={"population": "人口數"}
+                labels={"name":"城市名稱","population":"人口數"},
+                height=400
             )
-            solara.HTML(pio.to_html(fig_hist, include_plotlyjs='cdn'), style={"width":"50%","height":"400px"})
-
+            fig_hist.update_layout(xaxis_tickangle=-45)
+            solara.FigurePlotly(fig_hist, style={"width":"50%"})
+            # 右：圓餅圖
             fig_pie = px.pie(
-                filtered_data,
+                df,
                 names="name",
                 values="population",
-                title=f"{selected_country.value} 各城市人口比例"
+                title=f"{selected_country.value} 各城市人口比例",
+                height=400
             )
-            solara.HTML(pio.to_html(fig_pie, include_plotlyjs='cdn'), style={"width":"50%","height":"400px"})
+            solara.FigurePlotly(fig_pie, style={"width":"50%"})
+    else:
+        solara.Info("正在載入資料...")
 
-# ✅ 直接呼叫 Page() 啟動
+# -----------------------------
+# 5. 啟動 Page
+# -----------------------------
 Page()
